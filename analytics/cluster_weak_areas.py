@@ -21,7 +21,7 @@ FEATURE_COLUMNS = ["solveRate", "avgEaseFactor", "avgRepetitions"]
 RANK_LABELS = ["weak", "medium", "strong"]
 
 
-def cluster_weak_areas(features_df: pd.DataFrame) -> pd.DataFrame:
+def cluster_weak_areas(features_df: pd.DataFrame, log) -> pd.DataFrame:
     df = features_df.copy()
     df["avgEaseFactor"] = df["avgEaseFactor"].fillna(DEFAULT_EASE_FACTOR)
     df["avgRepetitions"] = df["avgRepetitions"].fillna(DEFAULT_REPETITIONS)
@@ -30,14 +30,16 @@ def cluster_weak_areas(features_df: pd.DataFrame) -> pd.DataFrame:
     k = min(3, n_samples)
 
     if n_samples == 0:
-        print("WARNING: no (userId, tag) rows to cluster - nothing to write.")
+        log.warning("No (userId, tag) rows to cluster - nothing to write.")
         return df.assign(cluster=pd.Series(dtype="object"))
 
     if k < 3:
-        print(
-            f"WARNING: only {n_samples} (userId, tag) row(s) available, need at least 3 "
-            f"distinct rows for a real weak/medium/strong split. Falling back to k={k} "
-            "cluster(s) - labels below are best-effort, not a meaningful 3-way split."
+        log.warning(
+            "Only %d (userId, tag) row(s) available, need at least 3 distinct rows for a "
+            "real weak/medium/strong split. Falling back to k=%d cluster(s) - labels below "
+            "are best-effort, not a meaningful 3-way split.",
+            n_samples,
+            k,
         )
 
     X = df[FEATURE_COLUMNS].to_numpy()

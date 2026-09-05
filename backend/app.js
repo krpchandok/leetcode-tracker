@@ -16,6 +16,7 @@ const loginRouter = require('./router/loginRoutes.js');
 const leetcodeRouter = require('./router/leetcodeRoutes.js');
 const { authLimiter, apiLimiter, leetcodeLimiter } = require('./utils/rateLimiters.js');
 const { traceIdMiddleware } = require('./utils/traceId.js');
+const { register } = require('./utils/metrics.js');
 
 // Comma-separated list so both the Vite dev server and the Chrome
 // extension's chrome-extension://<id> origin can be allowed at once, e.g.
@@ -35,6 +36,20 @@ app.use(traceIdMiddleware);
 
 app.get('/api/health', (req, res) => {
   res.json({ status: 'ok', timestamp: new Date().toISOString() });
+});
+
+// Standard, unauthenticated Prometheus scrape target. Note: this process's
+// registry only sees metrics recorded IN this process (the API gateway) —
+// leetcode_sync_requests_total and leetcode_sync_duration_seconds are
+// genuinely recorded here, but kafka_messages_processed_total is recorded
+// in the separate syncConsumer.js/schedulingConsumer.js processes and is
+// exposed via their own small metrics servers instead (see
+// utils/metricsServer.js) — separate OS processes can't share one
+// in-memory prom-client registry, so this is the standard multi-process
+// Prometheus pattern (one scrape target per process), not a shortcut.
+app.get('/api/metrics', async (req, res) => {
+  res.set('Content-Type', register.contentType);
+  res.end(await register.metrics());
 });
 
 app.use('/api/questions', apiLimiter, questionsRouter);

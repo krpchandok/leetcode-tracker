@@ -10,9 +10,9 @@ from pymongo import MongoClient, UpdateOne
 from spark_session import get_database_name
 
 
-def write_results(mongo_uri: str, clustered_df: pd.DataFrame) -> None:
+def write_results(mongo_uri: str, clustered_df: pd.DataFrame, log) -> None:
     if clustered_df.empty:
-        print("No weak-area rows to write.")
+        log.info("No weak-area rows to write.")
         return
 
     client = MongoClient(mongo_uri)
@@ -41,9 +41,11 @@ def write_results(mongo_uri: str, clustered_df: pd.DataFrame) -> None:
         ]
 
         result = collection.bulk_write(operations)
-        print(
-            f"weak_areas: {result.upserted_count} inserted, "
-            f"{result.modified_count} updated, {len(operations)} total rows processed."
+        log.info(
+            "weak_areas: %d inserted, %d updated, %d total rows processed.",
+            result.upserted_count,
+            result.modified_count,
+            len(operations),
         )
     finally:
         client.close()

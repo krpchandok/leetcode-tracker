@@ -4,9 +4,11 @@ Scheduling this as a recurring job is future work, not part of this script.
 """
 
 import os
+import uuid
 
 from dotenv import load_dotenv
 
+from logging_config import configure_logging, get_run_logger
 from spark_session import get_spark_session
 from load_data import join_features
 from features import compute_features
@@ -16,26 +18,30 @@ from write_results import write_results
 
 def main():
     load_dotenv()
+    configure_logging()
+    run_id = str(uuid.uuid4())
+    log = get_run_logger(__name__, run_id)
+
     mongo_uri = os.environ["MONGODB_URI"]
 
-    print("[1/5] Starting Spark session...")
+    log.info("[1/5] Starting Spark session...")
     spark = get_spark_session(mongo_uri)
 
     try:
-        print("[2/5] Loading and joining Question/Problem/Review collections...")
+        log.info("[2/5] Loading and joining Question/Problem/Review collections...")
         joined_df = join_features(spark)
 
-        print("[3/5] Engineering per-(userId, tag) features...")
+        log.info("[3/5] Engineering per-(userId, tag) features...")
         features_df = compute_features(joined_df)
-        print(f"    {len(features_df)} (userId, tag) rows produced.")
+        log.info("%d (userId, tag) rows produced.", len(features_df))
 
-        print("[4/5] Clustering into weak/medium/strong with scikit-learn...")
-        clustered_df = cluster_weak_areas(features_df)
+        log.info("[4/5] Clustering into weak/medium/strong with scikit-learn...")
+        clustered_df = cluster_weak_areas(features_df, log)
 
-        print("[5/5] Writing results to the weak_areas collection...")
-        write_results(mongo_uri, clustered_df)
+        log.info("[5/5] Writing results to the weak_areas collection...")
+        write_results(mongo_uri, clustered_df, log)
 
-        print("Done.")
+        log.info("Done.")
     finally:
         spark.stop()
 

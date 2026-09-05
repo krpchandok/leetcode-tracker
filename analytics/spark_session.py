@@ -38,6 +38,17 @@ from pyspark.sql import SparkSession
 
 MONGO_SPARK_CONNECTOR_PACKAGE = "org.mongodb.spark:mongo-spark-connector_2.12:10.5.0"
 
+# 10.5 made AutoBucketPartitioner the default batch-read partitioner, which
+# runs a $bucketAuto aggregation to size partitions — and $bucketAuto
+# rejects a computed bucket count of 0, which is exactly what happens on
+# a small collection (verified by hitting "Command failed with error
+# 40243: 'The $bucketAuto buckets field must be greater than 0, but found:
+# 0'" against this project's own tiny test data). Every collection here
+# (Question/Problem/Review for a single personal tracker) is small enough
+# that a single partition is not just a safe fallback but the actually
+# correct choice — there's no real parallelism to gain either way.
+MONGO_READ_PARTITIONER = "com.mongodb.spark.sql.connector.read.partitioner.SinglePartitionPartitioner"
+
 # Matches the MongoDB Node.js driver's (and therefore Mongoose's) own
 # default database name when a connection URI doesn't specify one.
 DEFAULT_DATABASE = "test"
@@ -73,6 +84,7 @@ def get_spark_session(mongo_uri: str) -> SparkSession:
         .config("spark.jars.packages", MONGO_SPARK_CONNECTOR_PACKAGE)
         .config("spark.mongodb.read.connection.uri", mongo_uri)
         .config("spark.mongodb.read.database", database)
+        .config("spark.mongodb.read.partitioner", MONGO_READ_PARTITIONER)
         .config("spark.mongodb.write.connection.uri", mongo_uri)
         .config("spark.mongodb.write.database", database)
         .getOrCreate()

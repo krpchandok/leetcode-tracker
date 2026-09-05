@@ -1,6 +1,6 @@
 const mongoose = require('mongoose');
 const { MONGODB_URI } = require('../utils/config.js');
-const { info, error } = require('../utils/logger.js');
+const { info, error, logger } = require('../utils/logger.js');
 const {
   kafka,
   getProducer,
@@ -10,6 +10,8 @@ const {
 const User = require('../models/users.js');
 const Question = require('../models/question.js');
 const { invalidate } = require('../redis/client.js');
+const { kafkaMessagesProcessedTotal } = require('../utils/metrics.js');
+const { startMetricsServer } = require('../utils/metricsServer.js');
 
 const IN_PROGRESS_STATUSES = new Set(['Pending', 'Judging', 'Compiling']);
 
@@ -24,62 +26,74 @@ const statusFor = (statusDisplay) => {
 };
 
 const processSubmission = async (submission, producer) => {
-  const { userId, titleSlug, title, statusDisplay } = submission;
+  const { userId, titleSlug, title, statusDisplay, traceId } = submission;
+  const log = logger.child({ traceId });
 
-  const user = await User.findById(userId);
-  if (!user) {
-    error(`syncConsumer: no user found for id ${userId}, skipping ${titleSlug}`);
-    return;
-  }
+  try {
+    const user = await User.findById(userId);
+    if (!user) {
+      log.error({ userId, titleSlug }, 'syncConsumer: no user found, skipping');
+      kafkaMessagesProcessedTotal.inc({ consumer: 'sync-service', outcome: 'error' });
+      return;
+    }
 
-  const status = statusFor(statusDisplay);
+    const status = statusFor(statusDisplay);
 
-  const question = await Question.findOneAndUpdate(
-    { titleSlug },
-    {
-      $setOnInsert: {
-        // LeetCode's numeric id isn't in the submission payload and the
-        // Problem collection lookup to backfill it is a later step; -1
-        // marks it as not yet known.
-        questionNumber: -1,
-        questionName: title,
-        questionLink: `https://leetcode.com/problems/${titleSlug}/`,
-        titleSlug,
-        difficulty: 'Unknown',
-      },
-      $set: {
-        status,
-        ...(status === 'solved' ? { lastUpdated: new Date() } : {}),
-      },
-    },
-    { upsert: true, returnDocument: 'after', setDefaultsOnInsert: true }
-  );
-
-  const alreadyLinked = user.questions.some((id) => id.toString() === question._id.toString());
-  if (!alreadyLinked) {
-    user.questions.push(question._id);
-    await user.save();
-  }
-
-  info(`Processed ${titleSlug} for user ${userId}: ${status}`);
-
-  // Actively invalidate rather than waiting out the 5-minute TTL, so a user
-  // who just solved something doesn't see stale dashboard numbers.
-  await invalidate(`stats:user:${userId}`);
-
-  await producer.send({
-    topic: TOPIC_SUBMISSION_PROCESSED,
-    messages: [
+    const question = await Question.findOneAndUpdate(
+      { titleSlug },
       {
-        value: JSON.stringify({ userId, titleSlug, questionId: question._id.toString() }),
+        $setOnInsert: {
+          // LeetCode's numeric id isn't in the submission payload and the
+          // Problem collection lookup to backfill it is a later step; -1
+          // marks it as not yet known.
+          questionNumber: -1,
+          questionName: title,
+          questionLink: `https://leetcode.com/problems/${titleSlug}/`,
+          titleSlug,
+          difficulty: 'Unknown',
+        },
+        $set: {
+          status,
+          ...(status === 'solved' ? { lastUpdated: new Date() } : {}),
+        },
       },
-    ],
-  });
+      { upsert: true, returnDocument: 'after', setDefaultsOnInsert: true }
+    );
+
+    const alreadyLinked = user.questions.some((id) => id.toString() === question._id.toString());
+    if (!alreadyLinked) {
+      user.questions.push(question._id);
+      await user.save();
+    }
+
+    log.info({ titleSlug, userId, status }, 'Processed submission');
+
+    // Actively invalidate rather than waiting out the 5-minute TTL, so a user
+    // who just solved something doesn't see stale dashboard numbers.
+    await invalidate(`stats:user:${userId}`);
+
+    await producer.send({
+      topic: TOPIC_SUBMISSION_PROCESSED,
+      messages: [
+        {
+          value: JSON.stringify({ userId, titleSlug, questionId: question._id.toString(), traceId }),
+        },
+      ],
+    });
+
+    kafkaMessagesProcessedTotal.inc({ consumer: 'sync-service', outcome: 'success' });
+  } catch (err) {
+    log.error({ err }, 'syncConsumer: failed to process submission');
+    kafkaMessagesProcessedTotal.inc({ consumer: 'sync-service', outcome: 'error' });
+    throw err;
+  }
 };
 
 const run = async () => {
   await mongoose.connect(MONGODB_URI);
   info('syncConsumer connected to MongoDB');
+
+  startMetricsServer(process.env.SYNC_METRICS_PORT || 9101);
 
   const producer = await getProducer();
 

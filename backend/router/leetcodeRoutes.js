@@ -5,6 +5,7 @@ const { syncProblems } = require('../leetcode/syncProblems.js');
 const Problem = require('../models/problem.js');
 const { getProducer, TOPIC_SUBMISSIONS_RAW } = require('../kafka/client.js');
 const { tokenExtractor, userExtractor } = require('../utils/middleware.js');
+const { syncRequestsTotal, syncDurationSeconds } = require('../utils/metrics.js');
 
 router.get('/daily', async (req, res) => {
   const { data } = await queryLeetCode('question-of-today.graphql');
@@ -81,54 +82,72 @@ router.get('/test-auth', async (req, res) => {
 // here on each call. Nothing LeetCode-related is ever persisted server-side
 // — session/csrf only ever live for the duration of this request.
 router.post('/submissions/sync', tokenExtractor, userExtractor, async (req, res) => {
-  const { session, csrf: bodyCsrf } = req.body;
-  if (!session) {
-    return res.status(400).json({ error: 'session is required' });
-  }
-
-  let csrf = bodyCsrf;
-  if (!csrf) {
-    try {
-      csrf = await fetchCsrfToken();
-    } catch (err) {
-      return res.status(400).json({ error: 'csrf is required and could not be fetched' });
-    }
-  }
-
-  const { data } = await queryLeetCode(
-    'submissions.graphql',
-    { offset: 0, limit: 20, lastKey: null, questionSlug: '' },
-    { session, csrf }
-  );
-
-  const submissions = data.submissionList.submissions || [];
-  const producer = await getProducer();
+  const endTimer = syncDurationSeconds.startTimer();
   const userId = req.user._id.toString();
 
-  if (submissions.length > 0) {
-    await producer.send({
-      topic: TOPIC_SUBMISSIONS_RAW,
-      messages: submissions.map((submission) => ({
-        value: JSON.stringify({
-          userId,
-          titleSlug: submission.titleSlug,
-          title: submission.title,
-          statusDisplay: submission.statusDisplay,
-          timestamp: submission.timestamp,
-          lang: submission.lang,
-        }),
+  try {
+    const { session, csrf: bodyCsrf } = req.body;
+    if (!session) {
+      syncRequestsTotal.inc({ outcome: 'error' });
+      endTimer();
+      return res.status(400).json({ error: 'session is required' });
+    }
+
+    let csrf = bodyCsrf;
+    if (!csrf) {
+      try {
+        csrf = await fetchCsrfToken();
+      } catch (err) {
+        syncRequestsTotal.inc({ outcome: 'error' });
+        endTimer();
+        return res.status(400).json({ error: 'csrf is required and could not be fetched' });
+      }
+    }
+
+    const { data } = await queryLeetCode(
+      'submissions.graphql',
+      { offset: 0, limit: 20, lastKey: null, questionSlug: '' },
+      { session, csrf }
+    );
+
+    const submissions = data.submissionList.submissions || [];
+    const producer = await getProducer();
+
+    if (submissions.length > 0) {
+      await producer.send({
+        topic: TOPIC_SUBMISSIONS_RAW,
+        messages: submissions.map((submission) => ({
+          value: JSON.stringify({
+            userId,
+            titleSlug: submission.titleSlug,
+            title: submission.title,
+            statusDisplay: submission.statusDisplay,
+            timestamp: submission.timestamp,
+            lang: submission.lang,
+            traceId: req.traceId,
+          }),
+        })),
+      });
+    }
+
+    req.log.info({ userId, published: submissions.length }, 'submissions/sync completed');
+    syncRequestsTotal.inc({ outcome: 'success' });
+    endTimer();
+
+    res.status(202).json({
+      published: submissions.length,
+      submissions: submissions.map((submission) => ({
+        title: submission.title,
+        titleSlug: submission.titleSlug,
+        statusDisplay: submission.statusDisplay,
       })),
     });
+  } catch (err) {
+    req.log.error({ err }, 'submissions/sync failed');
+    syncRequestsTotal.inc({ outcome: 'error' });
+    endTimer();
+    throw err;
   }
-
-  res.status(202).json({
-    published: submissions.length,
-    submissions: submissions.map((submission) => ({
-      title: submission.title,
-      titleSlug: submission.titleSlug,
-      statusDisplay: submission.statusDisplay,
-    })),
-  });
 });
 
 module.exports = router;
