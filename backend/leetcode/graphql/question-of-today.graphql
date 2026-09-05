@@ -1,0 +1,14 @@
+query questionOfToday {
+  activeDailyCodingChallengeQuestion {
+    date
+    userStatus
+    link
+    question {
+      questionId
+      title
+      titleSlug
+      difficulty
+      content
+    }
+  }
+}
