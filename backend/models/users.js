@@ -17,6 +17,7 @@ const userSchema = new mongoose.Schema({
         },
     ],
     streak: Number,
+    leetcodeUsername: String,
 });
 
 userSchema.set('toJSON', {

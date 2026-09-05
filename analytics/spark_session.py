@@ -1,0 +1,79 @@
+"""
+Toolchain requirements for this pipeline (verified against a real Windows
++ JDK setup while building this, not just assumed):
+
+- Java (JDK) must be installed locally for PySpark to run at all — PySpark
+  starts a real JVM under the hood. JDK 11 or 17 is the safe choice; PySpark
+  3.5.x bundles a Hadoop client that is NOT compatible with very new JDKs
+  (JDK 21+ can be hit-or-miss, JDK 24 fails outright with
+  "java.lang.UnsupportedOperationException: getSubject is not supported"
+  since Hadoop's UserGroupInformation relies on a javax.security.auth API
+  that newer JDKs removed). JDK 17 is confirmed working.
+- On Windows specifically, Hadoop's Shell class needs winutils.exe even for
+  a purely local Spark session with no HDFS involved at all (it's invoked
+  just to fetch/chmod the connector jar). Download a matching build (e.g.
+  the community-maintained https://github.com/cdarlint/winutils, a
+  hadoop-3.3.x build is close enough for the hadoop-client 3.3.4 PySpark
+  3.5.x bundles) and point HADOOP_HOME at the folder containing its bin/.
+  Without this, you'll see "HADOOP_HOME and hadoop.home.dir are unset."
+- The MongoDB Spark Connector jar (org.mongodb.spark:mongo-spark-connector,
+  see MONGO_SPARK_CONNECTOR_PACKAGE below) is not vendored — Spark resolves
+  it from Maven Central via spark.jars.packages the first time a
+  SparkSession using it is created, and caches it locally after that. This
+  means the very first run of this pipeline needs internet access; later
+  runs work offline from the local Ivy cache.
+
+Version choice: mongo-spark-connector_2.12:10.5.0 is the current release as
+of writing, and its release notes explicitly list support for Spark 3.3,
+3.4, and 3.5 (not Spark 4.x yet) — pinned pyspark==3.5.9 in requirements.txt
+to match, both verified against current Maven/PyPI metadata rather than
+assumed.
+"""
+
+import os
+import sys
+
+from pymongo import uri_parser
+from pyspark.sql import SparkSession
+
+MONGO_SPARK_CONNECTOR_PACKAGE = "org.mongodb.spark:mongo-spark-connector_2.12:10.5.0"
+
+# Matches the MongoDB Node.js driver's (and therefore Mongoose's) own
+# default database name when a connection URI doesn't specify one.
+DEFAULT_DATABASE = "test"
+
+
+def get_database_name(mongo_uri: str) -> str:
+    parsed = uri_parser.parse_uri(mongo_uri, validate=False)
+    return parsed.get("database") or DEFAULT_DATABASE
+
+
+def get_spark_session(mongo_uri: str) -> SparkSession:
+    # PySpark's worker processes need to be told which Python to use; on
+    # Windows this isn't reliably auto-detected and silently hangs
+    # (Py4JJavaError: SocketTimeoutException: Accept timed out) instead of
+    # failing clearly, so always pin it to whichever interpreter is running
+    # this script (i.e. the analytics/.venv/ one).
+    os.environ.setdefault("PYSPARK_PYTHON", sys.executable)
+    os.environ.setdefault("PYSPARK_DRIVER_PYTHON", sys.executable)
+
+    if sys.platform == "win32" and not os.environ.get("HADOOP_HOME"):
+        raise RuntimeError(
+            "HADOOP_HOME is not set. On Windows, Spark needs winutils.exe "
+            "even for a local-only session (see the module docstring in "
+            "spark_session.py for where to get one and how to point "
+            "HADOOP_HOME at it)."
+        )
+
+    database = get_database_name(mongo_uri)
+
+    return (
+        SparkSession.builder.appName("leetcode-tracker-analytics")
+        .master("local[*]")
+        .config("spark.jars.packages", MONGO_SPARK_CONNECTOR_PACKAGE)
+        .config("spark.mongodb.read.connection.uri", mongo_uri)
+        .config("spark.mongodb.read.database", database)
+        .config("spark.mongodb.write.connection.uri", mongo_uri)
+        .config("spark.mongodb.write.database", database)
+        .getOrCreate()
+    )

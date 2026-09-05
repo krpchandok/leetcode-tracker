@@ -16,12 +16,14 @@ router.get('/:id', async (req, res) => {
 });
 
 router.post('/', async (req, res) => {
-  const { questionNumber, questionName, questionLink, difficulty, status, needsReview } = req.body;
+  const { questionNumber, questionName, questionLink, titleSlug, topicTags, difficulty, status, needsReview } = req.body;
 
   const question = new Question({
     questionNumber,
     questionName,
     questionLink,
+    titleSlug,
+    topicTags,
     difficulty,
     status,
     needsReview,

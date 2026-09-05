@@ -1,0 +1,16 @@
+query questionList($categorySlug: String, $limit: Int, $skip: Int, $filters: QuestionListFilterInput) {
+  questionList(categorySlug: $categorySlug, limit: $limit, skip: $skip, filters: $filters) {
+    totalNum
+    data {
+      questionId
+      titleSlug
+      title
+      difficulty
+      isPaidOnly
+      topicTags {
+        name
+        slug
+      }
+    }
+  }
+}

@@ -18,6 +18,14 @@ const questionSchema = new mongoose.Schema({
         type: String,
         required: true,
     },
+    titleSlug: {
+        type: String,
+        required: true,
+    },
+    topicTags: {
+        type: [String],
+        default: [],
+    },
     difficulty: {
         type: String,
         required: true,

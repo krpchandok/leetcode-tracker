@@ -23,7 +23,7 @@ router.post('/', async (req, res) => {
         { expiresIn: '1h' }
     );
 
-    res.status(200).json({ token, username: user.username });
+    res.status(200).json({ token, username: user.username, id: user._id.toString() });
 });
 
 module.exports = router;

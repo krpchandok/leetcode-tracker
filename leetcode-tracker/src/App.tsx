@@ -1,30 +1,35 @@
-import { useState } from 'react'
-import heroImg from './assets/hero.png'
-import reactLogo from './assets/react.svg'
-import viteLogo from './assets/vite.svg'
-import './App.css'
-import Streaks from './components/streaks'
+import type { ReactNode } from 'react';
+import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
+import './App.css';
+import Login from './pages/Login';
+import Register from './pages/Register';
+import Dashboard from './pages/Dashboard';
 
-const handleStreakClick = (numStreaks: number) => {
-  if (numStreaks >= 3) {
-    alert(`You're on a roll with ${numStreaks} streaks! Keep it up!`);
-  } else {
-    alert(`You have ${numStreaks} streaks. Keep going!`);
+function RequireAuth({ children }: { children: ReactNode }) {
+  const token = localStorage.getItem('token');
+  if (!token) {
+    return <Navigate to="/login" replace />;
   }
+  return children;
 }
 
 function App() {
-  const [streaks, setStreaks] = useState(0)
-
   return (
-    <>
-      <Streaks
-        streaks={streaks}
-        onARoll={streaks >= 3}
-        handleClick={() => handleStreakClick(streaks)}
-      />
-    </>
-  )
+    <BrowserRouter>
+      <Routes>
+        <Route path="/login" element={<Login />} />
+        <Route path="/register" element={<Register />} />
+        <Route
+          path="/"
+          element={
+            <RequireAuth>
+              <Dashboard />
+            </RequireAuth>
+          }
+        />
+      </Routes>
+    </BrowserRouter>
+  );
 }
 
-export default App
+export default App;

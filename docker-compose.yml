@@ -1,0 +1,30 @@
+# Local single-broker Kafka (KRaft mode, no Zookeeper) for the sync pipeline
+# in backend/kafka/. Start it with `docker compose up -d` from this
+# directory; it listens on localhost:9092, which is what backend/kafka/
+# client.js connects to by default. Stop it with `docker compose down`.
+services:
+  kafka:
+    image: apache/kafka:3.9.1
+    container_name: leetcode-tracker-kafka
+    ports:
+      - "9092:9092"
+    environment:
+      KAFKA_NODE_ID: 1
+      KAFKA_PROCESS_ROLES: broker,controller
+      KAFKA_LISTENERS: PLAINTEXT://:9092,CONTROLLER://:9093
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://localhost:9092
+      KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT
+      KAFKA_CONTROLLER_QUORUM_VOTERS: 1@localhost:9093
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
+      KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS: 0
+
+  # Cache only, not a source of truth, so default in-memory (no persistence)
+  # is fine for local dev. Used by backend/redis/client.js on localhost:6379.
+  redis:
+    image: redis:7-alpine
+    container_name: leetcode-tracker-redis
+    ports:
+      - "6379:6379"
