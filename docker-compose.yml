@@ -98,7 +98,7 @@ services:
         # and must be reachable from the *browser*, not from inside the
         # compose network — i.e. the API's published host port, not its
         # service name.
-        VITE_API_URL: http://localhost:3001/api
+        VITE_API_URL: https://leetcode-tracker-api-k7xh.onrender.co
     container_name: leetcode-tracker-frontend
     ports:
       - "8080:80"
