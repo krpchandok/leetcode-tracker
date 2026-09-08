@@ -1,16 +1,3 @@
-# Render Blueprint — deploys the API (with the two Kafka consumers running
-# in-process, see backend/app.js) as a free Web Service, and the built React
-# app as a free Static Site. Nothing here costs money: Background Workers
-# and Cron Jobs are paid-only on Render, so the scheduled work (LeetCode
-# polling, stats-cache warming, the PySpark analytics batch) is instead
-# triggered by a free GitHub Actions cron workflow calling this API's admin
-# endpoints — see .github/workflows/scheduled-tasks.yml and README.md.
-#
-# To use: in the Render dashboard, New > Blueprint, point it at this repo.
-# Render will prompt for every envVar marked `sync: false` below — those are
-# real credentials that don't belong in git. See README.md for where to get
-# each one.
-
 services:
   - type: web
     name: leetcode-tracker-api
@@ -32,9 +19,6 @@ services:
         generateValue: true
       - key: ADMIN_TASK_TOKEN
         generateValue: true
-      # Real external credentials — filled in via the Render dashboard, not
-      # stored in this file. See README.md "External services" for where to
-      # get each one.
       - key: MONGODB_URI
         sync: false
       - key: KAFKA_BROKER
@@ -45,24 +29,15 @@ services:
         sync: false
       - key: REDIS_URL
         sync: false
-
   - type: web
     name: leetcode-tracker
     runtime: static
-    region: oregon
     rootDir: leetcode-tracker
     buildCommand: npm ci && npm run build
     staticPublishPath: ./dist
     envVars:
-      # Baked into the built JS at build time (Vite), not read at runtime —
-      # must match the API service's actual URL. If leetcode-tracker-api is
-      # taken and Render appends a suffix to it, update this to match and
-      # redeploy the static site.
       - key: VITE_API_URL
         value: https://leetcode-tracker-api.onrender.com/api
-    # React Router does client-side routing — without this, refreshing on
-    # /login or /register (anything but /) 404s, since there's no such file
-    # on the static host.
     routes:
       - type: rewrite
         source: /*
