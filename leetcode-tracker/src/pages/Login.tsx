@@ -31,31 +31,36 @@ function Login() {
 
   return (
     <div className="login-page">
-      <h1>Log in</h1>
-      <form onSubmit={handleSubmit}>
-        <label>
-          Username
-          <input
-            value={username}
-            onChange={(event) => setUsername(event.target.value)}
-            required
-          />
-        </label>
-        <label>
-          Password
-          <input
-            type="password"
-            value={password}
-            onChange={(event) => setPassword(event.target.value)}
-            required
-          />
-        </label>
-        <button type="submit">Log in</button>
-      </form>
-      {error && <p className="login-error">{error}</p>}
-      <p>
-        Don't have an account? <Link to="/register">Sign up</Link>
-      </p>
+      <div className="card">
+        <h1>
+          <span className="dot-cluster" />
+          Log in
+        </h1>
+        <form onSubmit={handleSubmit}>
+          <label>
+            Username
+            <input
+              value={username}
+              onChange={(event) => setUsername(event.target.value)}
+              required
+            />
+          </label>
+          <label>
+            Password
+            <input
+              type="password"
+              value={password}
+              onChange={(event) => setPassword(event.target.value)}
+              required
+            />
+          </label>
+          <button type="submit">Log in</button>
+        </form>
+        {error && <p className="login-error">{error}</p>}
+        <p className="muted-link muted">
+          Don't have an account? <Link to="/register">Sign up</Link>
+        </p>
+      </div>
     </div>
   );
 }

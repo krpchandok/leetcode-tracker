@@ -64,4 +64,18 @@ export const getReviewsDue = async (userId: string): Promise<ReviewDue[]> => {
   return response.data;
 };
 
+export type LogSolveInput = {
+  titleSlug: string;
+  title: string;
+  difficulty?: string;
+  tags?: string[];
+  timeTakenMinutes?: number;
+  notes?: string;
+};
+
+export const logSolve = async (input: LogSolveInput): Promise<{ published: boolean }> => {
+  const response = await client.post<{ published: boolean }>('/leetcode/submissions/log', input);
+  return response.data;
+};
+
 export default client;

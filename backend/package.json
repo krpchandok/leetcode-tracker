@@ -11,7 +11,8 @@
     "dev": "node --watch index.js",
     "consumer:sync": "node kafka/syncConsumer.js",
     "consumer:scheduling": "node kafka/schedulingConsumer.js",
-    "cron": "node cron/index.js"
+    "cron": "node cron/index.js",
+    "seed:demo": "node scripts/seedDemoAccount.js"
   },
   "dependencies": {
     "@leetnotion/leetcode-api": "^3.0.2",

@@ -1,6 +1,5 @@
 const router = require('express').Router();
 const { queryLeetCode } = require('../leetcode/client.js');
-const { fetchCsrfToken } = require('../leetcode/credential.js');
 const { syncProblems } = require('../leetcode/syncProblems.js');
 const Problem = require('../models/problem.js');
 const { getProducer, TOPIC_SUBMISSIONS_RAW } = require('../kafka/client.js');
@@ -45,105 +44,58 @@ router.get('/problems', async (req, res) => {
   res.json({ total, limit: Number(limit), skip: Number(skip), problems });
 });
 
-// TEMPORARY manual-testing scaffolding for the authenticated-GraphQL pattern.
-// Remove this route once the Chrome extension exists to supply a real user's
-// session cookie per-request. It reads the developer's own throwaway
-// LEETCODE_TEST_SESSION/LEETCODE_TEST_CSRF from backend/.env (never
-// committed) — it must never ship to production and must never be wired up
-// to accept a session/csrf pair from client input, since that would mean
-// this server accepting and relaying an arbitrary user's live LeetCode
-// credential.
-router.get('/test-auth', async (req, res) => {
-  const session = process.env.LEETCODE_TEST_SESSION;
-  if (!session) {
-    return res.status(500).json({ error: 'LEETCODE_TEST_SESSION not set in backend/.env' });
-  }
-
-  let csrf;
-  try {
-    csrf = await fetchCsrfToken();
-  } catch (err) {
-    csrf = process.env.LEETCODE_TEST_CSRF;
-  }
-  if (!csrf) {
-    return res.status(500).json({ error: 'no csrf token available' });
-  }
-
-  const { data } = await queryLeetCode(
-    'submissions.graphql',
-    { offset: 0, limit: 20, lastKey: null, questionSlug: '' },
-    { session, csrf }
-  );
-  res.json(data.submissionList);
-});
-
-// Real per-request credentials: the Chrome extension reads the user's own
-// LEETCODE_SESSION/csrftoken cookies live from their browser and sends them
-// here on each call. Nothing LeetCode-related is ever persisted server-side
-// — session/csrf only ever live for the duration of this request.
-router.post('/submissions/sync', tokenExtractor, userExtractor, async (req, res) => {
+// Manual entry: the in-app "Log a solve" form, replacing the Chrome
+// extension entirely. Publishes to the exact same Kafka topic the
+// (now-removed) extension-driven sync and the recentAcSubmissionList
+// poller (backend/cron/pollLeetCodeSubmissions.js) both use — the
+// ingestion → sync-service → scheduling-service pipeline doesn't care
+// where a submission event originated, only that userId/titleSlug/
+// statusDisplay are present. A manual log is always a solve by
+// definition (you don't log ones you didn't solve), and additionally
+// carries the difficulty/tags/time/notes detail LeetCode's own API never
+// gives us for a submission — syncConsumer.js uses these to fill in a
+// Question document more completely than the Kafka-sourced path can.
+router.post('/submissions/log', tokenExtractor, userExtractor, async (req, res) => {
   const endTimer = syncDurationSeconds.startTimer();
   const userId = req.user._id.toString();
 
   try {
-    const { session, csrf: bodyCsrf } = req.body;
-    if (!session) {
+    const { titleSlug, title, difficulty, tags, timeTakenMinutes, notes } = req.body;
+
+    if (!titleSlug || !title) {
       syncRequestsTotal.inc({ outcome: 'error' });
       endTimer();
-      return res.status(400).json({ error: 'session is required' });
+      return res.status(400).json({ error: 'titleSlug and title are required' });
     }
 
-    let csrf = bodyCsrf;
-    if (!csrf) {
-      try {
-        csrf = await fetchCsrfToken();
-      } catch (err) {
-        syncRequestsTotal.inc({ outcome: 'error' });
-        endTimer();
-        return res.status(400).json({ error: 'csrf is required and could not be fetched' });
-      }
-    }
-
-    const { data } = await queryLeetCode(
-      'submissions.graphql',
-      { offset: 0, limit: 20, lastKey: null, questionSlug: '' },
-      { session, csrf }
-    );
-
-    const submissions = data.submissionList.submissions || [];
     const producer = await getProducer();
-
-    if (submissions.length > 0) {
-      await producer.send({
-        topic: TOPIC_SUBMISSIONS_RAW,
-        messages: submissions.map((submission) => ({
+    await producer.send({
+      topic: TOPIC_SUBMISSIONS_RAW,
+      messages: [
+        {
           value: JSON.stringify({
             userId,
-            titleSlug: submission.titleSlug,
-            title: submission.title,
-            statusDisplay: submission.statusDisplay,
-            timestamp: submission.timestamp,
-            lang: submission.lang,
+            titleSlug,
+            title,
+            statusDisplay: 'Accepted',
+            timestamp: Math.floor(Date.now() / 1000).toString(),
+            difficulty: difficulty || undefined,
+            tags: Array.isArray(tags) ? tags : undefined,
+            timeTakenMinutes: typeof timeTakenMinutes === 'number' ? timeTakenMinutes : undefined,
+            notes: notes || undefined,
             traceId: req.traceId,
           }),
-        })),
-      });
-    }
+        },
+      ],
+    });
 
-    req.log.info({ userId, published: submissions.length }, 'submissions/sync completed');
+    req.log.info({ userId, titleSlug }, 'submissions/log published');
     syncRequestsTotal.inc({ outcome: 'success' });
     endTimer();
 
-    res.status(202).json({
-      published: submissions.length,
-      submissions: submissions.map((submission) => ({
-        title: submission.title,
-        titleSlug: submission.titleSlug,
-        statusDisplay: submission.statusDisplay,
-      })),
-    });
+    res.status(202).json({ published: true });
   } catch (err) {
-    req.log.error({ err }, 'submissions/sync failed');
+    req.log.error({ err }, 'submissions/log failed');
     syncRequestsTotal.inc({ outcome: 'error' });
     endTimer();
     throw err;

@@ -1,14 +1,36 @@
 const { Kafka, logLevel, Partitioners } = require('kafkajs');
 
+// Local dev (docker-compose's Kafka broker): just a bare broker address,
+// no auth. Managed Kafka (Upstash, Confluent Cloud, ...) needs SASL_SSL —
+// set KAFKA_USERNAME/KAFKA_PASSWORD (and KAFKA_BROKER to the provider's
+// broker URL) and this switches over automatically. Confirmed against
+// Upstash Kafka's own documented kafkajs example: SASL mechanism
+// scram-sha-256, ssl: true, single broker URL.
 const KAFKA_BROKER = process.env.KAFKA_BROKER || 'localhost:9092';
+const KAFKA_USERNAME = process.env.KAFKA_USERNAME;
+const KAFKA_PASSWORD = process.env.KAFKA_PASSWORD;
+const KAFKA_SASL_MECHANISM = process.env.KAFKA_SASL_MECHANISM || 'scram-sha-256';
 
 const TOPIC_SUBMISSIONS_RAW = 'submissions.raw';
 const TOPIC_SUBMISSION_PROCESSED = 'submission.processed';
 
+const managedAuth =
+  KAFKA_USERNAME && KAFKA_PASSWORD
+    ? {
+        ssl: true,
+        sasl: {
+          mechanism: KAFKA_SASL_MECHANISM,
+          username: KAFKA_USERNAME,
+          password: KAFKA_PASSWORD,
+        },
+      }
+    : {};
+
 const kafka = new Kafka({
   clientId: 'leetcode-tracker',
-  brokers: [KAFKA_BROKER],
+  brokers: KAFKA_BROKER.split(',').map((broker) => broker.trim()),
   logLevel: logLevel.WARN,
+  ...managedAuth,
 });
 
 const producer = kafka.producer({ createPartitioner: Partitioners.DefaultPartitioner });

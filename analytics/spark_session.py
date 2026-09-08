@@ -28,6 +28,23 @@ of writing, and its release notes explicitly list support for Spark 3.3,
 3.4, and 3.5 (not Spark 4.x yet) — pinned pyspark==3.5.9 in requirements.txt
 to match, both verified against current Maven/PyPI metadata rather than
 assumed.
+
+S3 archival (see s3_archive.py) is optional, not required for this pipeline
+to do its actual job (compute weak-area clusters, write them to MongoDB —
+the read path the live dashboard depends on). If AWS_ACCESS_KEY_ID/
+AWS_SECRET_ACCESS_KEY aren't set, the S3-related Spark packages and config
+below are simply skipped — the Mongo-writing part of the pipeline must keep
+working on a Render Cron Job even if S3 archival isn't configured or is
+having a bad day, rather than the whole run failing on account of a
+nice-to-have. When S3 *is* configured: needs org.apache.hadoop:hadoop-aws,
+and hadoop-aws is version-sensitive to the Hadoop client Spark itself
+bundles — mismatches here are a common source of confusing runtime errors
+(missing classes, NoSuchMethodError). Checked directly rather than assumed:
+this venv's pyspark==3.5.9 bundles hadoop-client-api/runtime 3.3.4 (see the
+.jar filenames under .venv/.../pyspark/jars/), and hadoop-aws:3.3.4's own
+Maven POM (inherited from the hadoop-project:3.3.4 parent) pins its
+aws-java-sdk-bundle dependency at exactly 1.12.262 — so that's the pair
+used below, not a guessed "latest" version of either.
 """
 
 import os
@@ -37,6 +54,8 @@ from pymongo import uri_parser
 from pyspark.sql import SparkSession
 
 MONGO_SPARK_CONNECTOR_PACKAGE = "org.mongodb.spark:mongo-spark-connector_2.12:10.5.0"
+HADOOP_AWS_PACKAGE = "org.apache.hadoop:hadoop-aws:3.3.4"
+AWS_JAVA_SDK_PACKAGE = "com.amazonaws:aws-java-sdk-bundle:1.12.262"
 
 # 10.5 made AutoBucketPartitioner the default batch-read partitioner, which
 # runs a $bucketAuto aggregation to size partitions — and $bucketAuto
@@ -59,6 +78,10 @@ def get_database_name(mongo_uri: str) -> str:
     return parsed.get("database") or DEFAULT_DATABASE
 
 
+def s3_archival_enabled() -> bool:
+    return bool(os.environ.get("AWS_ACCESS_KEY_ID") and os.environ.get("AWS_SECRET_ACCESS_KEY"))
+
+
 def get_spark_session(mongo_uri: str) -> SparkSession:
     # PySpark's worker processes need to be told which Python to use; on
     # Windows this isn't reliably auto-detected and silently hangs
@@ -78,14 +101,26 @@ def get_spark_session(mongo_uri: str) -> SparkSession:
 
     database = get_database_name(mongo_uri)
 
-    return (
+    packages = [MONGO_SPARK_CONNECTOR_PACKAGE]
+    if s3_archival_enabled():
+        packages += [HADOOP_AWS_PACKAGE, AWS_JAVA_SDK_PACKAGE]
+
+    builder = (
         SparkSession.builder.appName("leetcode-tracker-analytics")
         .master("local[*]")
-        .config("spark.jars.packages", MONGO_SPARK_CONNECTOR_PACKAGE)
+        .config("spark.jars.packages", ",".join(packages))
         .config("spark.mongodb.read.connection.uri", mongo_uri)
         .config("spark.mongodb.read.database", database)
         .config("spark.mongodb.read.partitioner", MONGO_READ_PARTITIONER)
         .config("spark.mongodb.write.connection.uri", mongo_uri)
         .config("spark.mongodb.write.database", database)
-        .getOrCreate()
     )
+
+    if s3_archival_enabled():
+        builder = (
+            builder.config("spark.hadoop.fs.s3a.access.key", os.environ["AWS_ACCESS_KEY_ID"])
+            .config("spark.hadoop.fs.s3a.secret.key", os.environ["AWS_SECRET_ACCESS_KEY"])
+            .config("spark.hadoop.fs.s3a.endpoint.region", os.environ.get("AWS_REGION", "us-east-1"))
+        )
+
+    return builder.getOrCreate()

@@ -62,12 +62,10 @@ const processEvent = async (event) => {
   }
 };
 
-const run = async () => {
-  await mongoose.connect(MONGODB_URI);
-  info('schedulingConsumer connected to MongoDB');
-
-  startMetricsServer(process.env.SCHEDULING_METRICS_PORT || 9102);
-
+// See startSyncConsumer's comment in ./syncConsumer.js for why this doesn't
+// connect to Mongo or start a metrics server itself — same reasoning
+// applies here for the merged single-process Render deploy.
+const startSchedulingConsumer = async () => {
   // Redelivery note: this relies solely on kafkajs's default offset-commit
   // behavior (committed after eachMessage resolves) to avoid reprocessing.
   // If a message is redelivered anyway (e.g. the process crashes between
@@ -87,9 +85,26 @@ const run = async () => {
       await processEvent(event);
     },
   });
+
+  return consumer;
 };
 
-run().catch((err) => {
-  error('schedulingConsumer crashed:', err);
-  process.exit(1);
-});
+// Standalone-process entry point — see the matching guard in
+// ./syncConsumer.js for why this is gated on require.main.
+if (require.main === module) {
+  const runStandalone = async () => {
+    await mongoose.connect(MONGODB_URI);
+    info('schedulingConsumer connected to MongoDB');
+
+    startMetricsServer(process.env.SCHEDULING_METRICS_PORT || 9102);
+
+    await startSchedulingConsumer();
+  };
+
+  runStandalone().catch((err) => {
+    error('schedulingConsumer crashed:', err);
+    process.exit(1);
+  });
+}
+
+module.exports = { processEvent, startSchedulingConsumer };

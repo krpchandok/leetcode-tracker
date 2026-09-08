@@ -43,6 +43,15 @@ const questionSchema = new mongoose.Schema({
         type: Date,
         default: Date.now,
     },
+    // Only ever set from the manual "Log a solve" form — LeetCode-sourced
+    // submissions (whether from the sync pipeline or the recentAcSubmissionList
+    // poller) have no notion of either.
+    timeTakenMinutes: {
+        type: Number,
+    },
+    notes: {
+        type: String,
+    },
 });
 
 questionSchema.set('toJSON', {
@@ -50,6 +59,7 @@ questionSchema.set('toJSON', {
         returnedObject.id = returnedObject._id.toString();
         delete returnedObject._id;
         delete returnedObject.__v;
+        return returnedObject;
     }
 });
 

@@ -1,8 +1,19 @@
-# Local single-broker Kafka (KRaft mode, no Zookeeper) for the sync pipeline
-# in backend/kafka/. Start it with `docker compose up -d` from this
-# directory; it listens on localhost:9092, which is what backend/kafka/
-# client.js connects to by default. Stop it with `docker compose down`.
+# Local dev, either way:
+#   - `npm run dev` / `npm run consumer:*` / `npm run cron` / `npm run dev`
+#     (frontend) directly on your host, pointed at the Kafka/Redis ports
+#     published below on localhost — unchanged from before.
+#   - `docker compose up --build` to run the API, both consumers, and the
+#     frontend fully containerized, self-hosting everything this stack needs
+#     (an alternative to the managed-Kafka + Render deploy shape described in
+#     README.md — see render.yaml for that one). Requires backend/.env to
+#     already exist (same file the host workflow uses).
 services:
+  # Two listeners: PLAINTEXT is what host processes connect to (localhost,
+  # unchanged from before); INTERNAL is what other containers in this
+  # compose network connect to (by service name, kafka:29092) — a Kafka
+  # broker's advertised listener has to match how the *connecting* client
+  # reaches it, so one broker serving both host and in-network clients
+  # needs both.
   kafka:
     image: apache/kafka:3.9.1
     container_name: leetcode-tracker-kafka
@@ -11,10 +22,11 @@ services:
     environment:
       KAFKA_NODE_ID: 1
       KAFKA_PROCESS_ROLES: broker,controller
-      KAFKA_LISTENERS: PLAINTEXT://:9092,CONTROLLER://:9093
-      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://localhost:9092
+      KAFKA_LISTENERS: PLAINTEXT://:9092,INTERNAL://:29092,CONTROLLER://:9093
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://localhost:9092,INTERNAL://kafka:29092
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT,INTERNAL:PLAINTEXT
+      KAFKA_INTER_BROKER_LISTENER_NAME: INTERNAL
       KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
-      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT
       KAFKA_CONTROLLER_QUORUM_VOTERS: 1@localhost:9093
       KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
       KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
@@ -22,9 +34,73 @@ services:
       KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS: 0
 
   # Cache only, not a source of truth, so default in-memory (no persistence)
-  # is fine for local dev. Used by backend/redis/client.js on localhost:6379.
+  # is fine for local dev. Used by backend/redis/client.js on localhost:6379
+  # (host workflow) or redis:6379 (containerized workflow).
   redis:
     image: redis:7-alpine
     container_name: leetcode-tracker-redis
     ports:
       - "6379:6379"
+
+  # Shared image (see backend/Dockerfile) for the API, both consumers, and
+  # (if you run it manually via `docker compose run cron`) the cron job —
+  # they differ only in `command:` below, not in what's built.
+  api:
+    build: ./backend
+    container_name: leetcode-tracker-api
+    ports:
+      - "3001:3001"
+    env_file:
+      - ./backend/.env
+    environment:
+      # Overrides env_file's host-oriented defaults with the compose
+      # network's service names — MongoDB stays whatever backend/.env
+      # points at (Atlas, unaffected by this compose network either way).
+      KAFKA_BROKER: kafka:29092
+      REDIS_URL: redis://redis:6379
+      CORS_ORIGIN: http://localhost:5173,http://localhost:8080
+    depends_on:
+      - kafka
+      - redis
+    command: ["npm", "start"]
+
+  sync-consumer:
+    build: ./backend
+    container_name: leetcode-tracker-sync-consumer
+    env_file:
+      - ./backend/.env
+    environment:
+      KAFKA_BROKER: kafka:29092
+      REDIS_URL: redis://redis:6379
+    depends_on:
+      - kafka
+      - redis
+    command: ["npm", "run", "consumer:sync"]
+
+  scheduling-consumer:
+    build: ./backend
+    container_name: leetcode-tracker-scheduling-consumer
+    env_file:
+      - ./backend/.env
+    environment:
+      KAFKA_BROKER: kafka:29092
+      REDIS_URL: redis://redis:6379
+    depends_on:
+      - kafka
+      - redis
+    command: ["npm", "run", "consumer:scheduling"]
+
+  frontend:
+    build:
+      context: ./leetcode-tracker
+      args:
+        # Baked in at build time (Vite reads VITE_* at build, not runtime),
+        # and must be reachable from the *browser*, not from inside the
+        # compose network — i.e. the API's published host port, not its
+        # service name.
+        VITE_API_URL: http://localhost:3001/api
+    container_name: leetcode-tracker-frontend
+    ports:
+      - "8080:80"
+    depends_on:
+      - api

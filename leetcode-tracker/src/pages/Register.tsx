@@ -38,32 +38,37 @@ function Register() {
 
   return (
     <div className="login-page">
-      <h1>Sign up</h1>
-      <form onSubmit={handleSubmit}>
-        <label>
-          Username
-          <input
-            value={username}
-            onChange={(event) => setUsername(event.target.value)}
-            required
-          />
-        </label>
-        <label>
-          Password
-          <input
-            type="password"
-            value={password}
-            onChange={(event) => setPassword(event.target.value)}
-            required
-            minLength={6}
-          />
-        </label>
-        <button type="submit">Sign up</button>
-      </form>
-      {error && <p className="login-error">{error}</p>}
-      <p>
-        Already have an account? <Link to="/login">Log in</Link>
-      </p>
+      <div className="card">
+        <h1>
+          <span className="dot-cluster" />
+          Sign up
+        </h1>
+        <form onSubmit={handleSubmit}>
+          <label>
+            Username
+            <input
+              value={username}
+              onChange={(event) => setUsername(event.target.value)}
+              required
+            />
+          </label>
+          <label>
+            Password
+            <input
+              type="password"
+              value={password}
+              onChange={(event) => setPassword(event.target.value)}
+              required
+              minLength={6}
+            />
+          </label>
+          <button type="submit">Sign up</button>
+        </form>
+        {error && <p className="login-error">{error}</p>}
+        <p className="muted-link muted">
+          Already have an account? <Link to="/login">Log in</Link>
+        </p>
+      </div>
     </div>
   );
 }

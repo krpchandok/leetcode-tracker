@@ -1,0 +1,81 @@
+name: Scheduled tasks
+
+# Render's free Web Service tier has no free always-on process to run
+# node-cron in (Background Workers and Cron Jobs are paid-only), so this
+# workflow is the scheduler instead — it's free, and as a side effect of
+# calling the API on a schedule it also wakes the free web service back up
+# if it had spun down from inactivity. See README.md "Deploying" and the
+# comments in backend/router/adminRoutes.js.
+#
+# GitHub disables scheduled workflows automatically after 60 days with no
+# commits to the repo — push anything (even a no-op commit) to re-enable it
+# if the schedule appears to have stopped firing.
+
+on:
+  schedule:
+    # Every 30 minutes: poll LeetCode for each user's recent accepted
+    # submissions (backend/cron/pollLeetCodeSubmissions.js).
+    - cron: '*/30 * * * *'
+    # Once daily at 03:00 UTC: pre-warm the per-user stats cache
+    # (backend/cron/warmStatsCache.js).
+    - cron: '0 3 * * *'
+    # Once daily at 04:00 UTC: run the PySpark clustering pipeline directly
+    # against MongoDB Atlas — a scheduled batch job, not an always-on
+    # service, so the live dashboard never waits on Spark.
+    - cron: '0 4 * * *'
+  workflow_dispatch: {}
+
+jobs:
+  poll-leetcode-submissions:
+    if: github.event.schedule == '*/30 * * * *' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Call /api/admin/poll-leetcode-submissions
+        run: |
+          curl -sf -X POST "${{ secrets.BACKEND_URL }}/api/admin/poll-leetcode-submissions" \
+            -H "X-Admin-Token: ${{ secrets.ADMIN_TASK_TOKEN }}"
+
+  warm-stats-cache:
+    if: github.event.schedule == '0 3 * * *' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Call /api/admin/warm-stats-cache
+        run: |
+          curl -sf -X POST "${{ secrets.BACKEND_URL }}/api/admin/warm-stats-cache" \
+            -H "X-Admin-Token: ${{ secrets.ADMIN_TASK_TOKEN }}"
+
+  run-analytics-pipeline:
+    if: github.event.schedule == '0 4 * * *' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      # PySpark needs a JVM; 17 is the version confirmed compatible with the
+      # pinned pyspark/mongo-spark-connector versions — see
+      # analytics/spark_session.py's docstring.
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Install dependencies
+        working-directory: analytics
+        run: pip install -r requirements.txt
+
+      - name: Run clustering pipeline
+        working-directory: analytics
+        env:
+          MONGODB_URI: ${{ secrets.MONGODB_URI }}
+          # Optional — only set these repo secrets if S3 archival of pipeline
+          # runs is wanted. Left unset, run_pipeline.py skips it (soft-fail,
+          # not an error) — see analytics/spark_session.py's
+          # s3_archival_enabled().
+          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          AWS_REGION: ${{ secrets.AWS_REGION }}
+          S3_BUCKET_NAME: ${{ secrets.S3_BUCKET_NAME }}
+        run: python run_pipeline.py

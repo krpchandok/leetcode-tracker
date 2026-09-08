@@ -1,25 +1,23 @@
 const fs = require('fs');
 const path = require('path');
-const { buildAuthHeaders } = require('./credential.js');
 
 const LEETCODE_GRAPHQL_URL = 'https://leetcode.com/graphql';
 const GRAPHQL_DIR = path.join(__dirname, 'graphql');
 
-const queryLeetCode = async (fileName, variables = {}, auth) => {
+// All queries here are LeetCode's public GraphQL endpoints (daily
+// challenge, a public profile's stats, the problem catalog, a public
+// profile's recent accepted submissions) — no session cookie is ever
+// needed or accepted. The old session/csrf-authenticated path this used to
+// support existed only for the Chrome extension, which has been removed.
+const queryLeetCode = async (fileName, variables = {}) => {
   const query = fs.readFileSync(path.join(GRAPHQL_DIR, fileName), 'utf-8');
-
-  const headers = {
-    'Content-Type': 'application/json',
-    'Referer': 'https://leetcode.com/problemset/',
-  };
-
-  if (auth) {
-    Object.assign(headers, buildAuthHeaders(auth.session, auth.csrf));
-  }
 
   const response = await fetch(LEETCODE_GRAPHQL_URL, {
     method: 'POST',
-    headers,
+    headers: {
+      'Content-Type': 'application/json',
+      'Referer': 'https://leetcode.com/problemset/',
+    },
     body: JSON.stringify({ query, variables }),
   });
 

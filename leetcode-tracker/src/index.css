@@ -1,111 +1,199 @@
 :root {
-  --text: #6b6375;
-  --text-h: #08060d;
-  --bg: #fff;
-  --border: #e5e4e7;
-  --code-bg: #f4f3ec;
-  --accent: #aa3bff;
-  --accent-bg: rgba(170, 59, 255, 0.1);
-  --accent-border: rgba(170, 59, 255, 0.5);
-  --social-bg: rgba(244, 243, 236, 0.5);
-  --shadow:
-    rgba(0, 0, 0, 0.1) 0 10px 15px -3px, rgba(0, 0, 0, 0.05) 0 4px 6px -2px;
+  --bg: #fef6fa;
+  --card-bg: #ffffff;
+  --card-border: #fce4f0;
+  --lavender: #d6c6f7;
+  --pink: #ffc2dd;
+  --pink-deep: #f6a8cf;
+  --mint: #b8e8d8;
+  --text: #4a3a47;
+  --text-heading: #3d2e3a;
+  --text-muted: #a58ea0;
+  --text-muted-2: #c9a8bd;
 
-  --sans: system-ui, 'Segoe UI', Roboto, sans-serif;
-  --heading: system-ui, 'Segoe UI', Roboto, sans-serif;
-  --mono: ui-monospace, Consolas, monospace;
+  --radius-card: 20px;
+  --radius-pill: 999px;
+  --font-body: 'Quicksand', system-ui, sans-serif;
 
-  font: 18px/145% var(--sans);
-  letter-spacing: 0.18px;
-  color-scheme: light dark;
+  font: 17px/1.5 var(--font-body);
+  color-scheme: light;
   color: var(--text);
   background: var(--bg);
   font-synthesis: none;
   text-rendering: optimizeLegibility;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
-
-  @media (max-width: 1024px) {
-    font-size: 16px;
-  }
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --text: #9ca3af;
-    --text-h: #f3f4f6;
-    --bg: #16171d;
-    --border: #2e303a;
-    --code-bg: #1f2028;
-    --accent: #c084fc;
-    --accent-bg: rgba(192, 132, 252, 0.15);
-    --accent-border: rgba(192, 132, 252, 0.5);
-    --social-bg: rgba(47, 48, 58, 0.5);
-    --shadow:
-      rgba(0, 0, 0, 0.4) 0 10px 15px -3px, rgba(0, 0, 0, 0.25) 0 4px 6px -2px;
-  }
-
-  #social .button-icon {
-    filter: invert(1) brightness(2);
-  }
-}
-
-#root {
-  width: 1126px;
-  max-width: 100%;
-  margin: 0 auto;
-  text-align: center;
-  border-inline: 1px solid var(--border);
-  min-height: 100svh;
-  display: flex;
-  flex-direction: column;
+* {
   box-sizing: border-box;
 }
 
 body {
   margin: 0;
+  background: var(--bg);
+  color: var(--text);
+  min-height: 100vh;
+}
+
+#root {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
 }
 
 h1,
-h2 {
-  font-family: var(--heading);
-  font-weight: 500;
-  color: var(--text-h);
+h2,
+h3 {
+  font-family: var(--font-body);
+  font-weight: 700;
+  color: var(--text-heading);
+  margin: 0 0 12px;
 }
 
 h1 {
-  font-size: 56px;
-  letter-spacing: -1.68px;
-  margin: 32px 0;
-  @media (max-width: 1024px) {
-    font-size: 36px;
-    margin: 20px 0;
-  }
+  font-size: 32px;
 }
+
 h2 {
-  font-size: 24px;
-  line-height: 118%;
-  letter-spacing: -0.24px;
-  margin: 0 0 8px;
-  @media (max-width: 1024px) {
-    font-size: 20px;
-  }
+  font-size: 20px;
+  display: flex;
+  align-items: center;
 }
+
 p {
   margin: 0;
 }
 
-code,
-.counter {
-  font-family: var(--mono);
-  display: inline-flex;
-  border-radius: 4px;
-  color: var(--text-h);
+a {
+  color: var(--pink-deep);
+  font-weight: 600;
 }
 
-code {
+/* Three small overlapping circles (pink/lavender/mint) as a decorative
+   accent next to headings — cute comes from shape/color, never emoji. */
+.dot-cluster {
+  display: inline-block;
+  width: 12px;
+  height: 12px;
+  min-width: 12px;
+  border-radius: 50%;
+  background: var(--pink);
+  margin-right: 18px;
+  box-shadow:
+    9px 0 0 var(--lavender),
+    18px 0 0 var(--mint);
+}
+
+/* Flat-fill card with a soft border (no heavy shadow) and a blob peeking
+   out of the top-right corner via ::before. */
+.card {
+  position: relative;
+  background: var(--card-bg);
+  border: 1px solid var(--card-border);
+  border-radius: var(--radius-card);
+  padding: 24px;
+  transition: transform 0.2s ease;
+}
+
+.card::before {
+  content: '';
+  position: absolute;
+  z-index: -1;
+  top: -14px;
+  right: -14px;
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  background: var(--mint);
+}
+
+.card:hover {
+  transform: translateY(-4px) rotate(-1deg);
+}
+
+button,
+.btn {
+  border-radius: var(--radius-pill);
+  border: none;
+  padding: 10px 26px;
+  font-family: var(--font-body);
+  font-weight: 600;
   font-size: 15px;
-  line-height: 135%;
-  padding: 4px 8px;
-  background: var(--code-bg);
+  cursor: pointer;
+  background: var(--lavender);
+  color: var(--text-heading);
+  transition:
+    transform 0.15s ease,
+    background 0.15s ease;
+}
+
+button:hover,
+.btn:hover {
+  background: var(--pink-deep);
+  transform: translateY(-2px);
+}
+
+button:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+  transform: none;
+}
+
+input,
+select,
+textarea {
+  font-family: var(--font-body);
+  font-size: 15px;
+  color: var(--text);
+  background: var(--bg);
+  border: 1px solid var(--card-border);
+  border-radius: 14px;
+  padding: 10px 14px;
+  width: 100%;
+}
+
+input:focus,
+select:focus,
+textarea:focus {
+  outline: 2px solid var(--lavender);
+  outline-offset: 1px;
+}
+
+label {
+  display: block;
+  font-weight: 600;
+  color: var(--text-heading);
+  font-size: 14px;
+  margin-bottom: 14px;
+}
+
+label input,
+label select,
+label textarea {
+  margin-top: 6px;
+}
+
+.badge {
+  display: inline-block;
+  border-radius: var(--radius-pill);
+  padding: 4px 14px;
+  font-size: 13px;
+  font-weight: 600;
+  background: var(--mint);
+  color: var(--text-heading);
+  white-space: nowrap;
+}
+
+.badge-pink {
+  background: var(--pink);
+}
+
+.badge-lavender {
+  background: var(--lavender);
+}
+
+.muted {
+  color: var(--text-muted);
+  font-size: 14px;
 }

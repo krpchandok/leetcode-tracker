@@ -26,7 +26,8 @@ const statusFor = (statusDisplay) => {
 };
 
 const processSubmission = async (submission, producer) => {
-  const { userId, titleSlug, title, statusDisplay, traceId } = submission;
+  const { userId, titleSlug, title, statusDisplay, traceId, difficulty, tags, timeTakenMinutes, notes } =
+    submission;
   const log = logger.child({ traceId });
 
   try {
@@ -39,6 +40,11 @@ const processSubmission = async (submission, producer) => {
 
     const status = statusFor(statusDisplay);
 
+    // difficulty/tags/timeTakenMinutes/notes only ever arrive from the
+    // manual "Log a solve" form (backend/router/leetcodeRoutes.js) —
+    // LeetCode's own submission data (whether from the sync-problems
+    // pipeline or the recentAcSubmissionList poller) never carries them,
+    // so they fall back to the same placeholders as before.
     const question = await Question.findOneAndUpdate(
       { titleSlug },
       {
@@ -50,11 +56,14 @@ const processSubmission = async (submission, producer) => {
           questionName: title,
           questionLink: `https://leetcode.com/problems/${titleSlug}/`,
           titleSlug,
-          difficulty: 'Unknown',
+          difficulty: difficulty || 'Unknown',
+          topicTags: tags || [],
         },
         $set: {
           status,
           ...(status === 'solved' ? { lastUpdated: new Date() } : {}),
+          ...(typeof timeTakenMinutes === 'number' ? { timeTakenMinutes } : {}),
+          ...(notes ? { notes } : {}),
         },
       },
       { upsert: true, returnDocument: 'after', setDefaultsOnInsert: true }
@@ -89,12 +98,14 @@ const processSubmission = async (submission, producer) => {
   }
 };
 
-const run = async () => {
-  await mongoose.connect(MONGODB_URI);
-  info('syncConsumer connected to MongoDB');
-
-  startMetricsServer(process.env.SYNC_METRICS_PORT || 9101);
-
+// Connects and starts consuming; assumes Mongo is already connected (or
+// connecting — mongoose buffers commands until the connection is ready) and
+// leaves metrics/process-lifecycle concerns to the caller. This is what
+// app.js calls directly for the single-process Render deploy, where the
+// Express app has already connected to Mongo and already exposes
+// /api/metrics — starting a second Mongo connection or metrics server here
+// would just be redundant in that mode.
+const startSyncConsumer = async () => {
   const producer = await getProducer();
 
   const consumer = kafka.consumer({ groupId: 'sync-service' });
@@ -109,9 +120,31 @@ const run = async () => {
       await processSubmission(submission, producer);
     },
   });
+
+  return consumer;
 };
 
-run().catch((err) => {
-  error('syncConsumer crashed:', err);
-  process.exit(1);
-});
+// Standalone-process entry point — `npm run consumer:sync` / `node
+// kafka/syncConsumer.js` in docker-compose's self-hosted setup, where this
+// file has no Express app to share a Mongo connection or metrics registry
+// with, so it sets both up itself. Guarded by require.main so `require`ing
+// this module from app.js (the merged single-process Render deploy) only
+// picks up startSyncConsumer/processSubmission and doesn't also try to open
+// a second Mongo connection or bind a second metrics port.
+if (require.main === module) {
+  const runStandalone = async () => {
+    await mongoose.connect(MONGODB_URI);
+    info('syncConsumer connected to MongoDB');
+
+    startMetricsServer(process.env.SYNC_METRICS_PORT || 9101);
+
+    await startSyncConsumer();
+  };
+
+  runStandalone().catch((err) => {
+    error('syncConsumer crashed:', err);
+    process.exit(1);
+  });
+}
+
+module.exports = { processSubmission, startSyncConsumer };
