@@ -59,6 +59,14 @@ services:
       KAFKA_BROKER: kafka:29092
       REDIS_URL: redis://redis:6379
       CORS_ORIGIN: http://localhost:5173,http://localhost:8080
+      # backend/.env carries real KAFKA_USERNAME/KAFKA_PASSWORD for a managed
+      # broker (Confluent Cloud, Upstash Kafka) once you've set one up — but
+      # this compose network's own kafka service (above) is plaintext-only,
+      # no SASL/TLS. Blanked here so kafka/client.js takes the plaintext
+      # path against it instead of attempting SASL_SSL, which would just
+      # hang/fail the TLS handshake against a broker that doesn't speak it.
+      KAFKA_USERNAME: ''
+      KAFKA_PASSWORD: ''
     depends_on:
       - kafka
       - redis
@@ -72,6 +80,9 @@ services:
     environment:
       KAFKA_BROKER: kafka:29092
       REDIS_URL: redis://redis:6379
+      # See the api service's comment above for why these are blanked.
+      KAFKA_USERNAME: ''
+      KAFKA_PASSWORD: ''
     depends_on:
       - kafka
       - redis
@@ -85,6 +96,9 @@ services:
     environment:
       KAFKA_BROKER: kafka:29092
       REDIS_URL: redis://redis:6379
+      # See the api service's comment above for why these are blanked.
+      KAFKA_USERNAME: ''
+      KAFKA_PASSWORD: ''
     depends_on:
       - kafka
       - redis
