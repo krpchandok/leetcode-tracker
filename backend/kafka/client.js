@@ -9,7 +9,6 @@ const { Kafka, logLevel, Partitioners } = require('kafkajs');
 const KAFKA_BROKER = process.env.KAFKA_BROKER || 'localhost:9092';
 const KAFKA_USERNAME = process.env.KAFKA_USERNAME;
 const KAFKA_PASSWORD = process.env.KAFKA_PASSWORD;
-const KAFKA_SASL_MECHANISM = process.env.KAFKA_SASL_MECHANISM || 'scram-sha-256';
 
 const TOPIC_SUBMISSIONS_RAW = 'submissions.raw';
 const TOPIC_SUBMISSION_PROCESSED = 'submission.processed';
@@ -19,7 +18,7 @@ const managedAuth =
     ? {
         ssl: true,
         sasl: {
-          mechanism: KAFKA_SASL_MECHANISM,
+          mechanism: 'plain',
           username: KAFKA_USERNAME,
           password: KAFKA_PASSWORD,
         },
