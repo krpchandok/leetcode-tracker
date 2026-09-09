@@ -28,6 +28,7 @@ function Register() {
     try {
       const response = await login(username, password);
       localStorage.setItem('token', response.token);
+      localStorage.setItem('refreshToken', response.refreshToken);
       localStorage.setItem('username', response.username);
       localStorage.setItem('userId', response.id);
       navigate('/');

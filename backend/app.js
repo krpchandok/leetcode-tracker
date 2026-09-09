@@ -19,6 +19,7 @@ const questionsRouter = require('./router/questionRoutes.js');
 const userRouter = require('./router/userRoutes.js');
 const { unknownEndpoint, errorHandler } = require('./utils/middleware.js');
 const loginRouter = require('./router/loginRoutes.js');
+const authRouter = require('./router/authRoutes.js');
 const leetcodeRouter = require('./router/leetcodeRoutes.js');
 const adminRouter = require('./router/adminRoutes.js');
 const { authLimiter, apiLimiter, leetcodeLimiter } = require('./utils/rateLimiters.js');
@@ -61,6 +62,11 @@ app.get('/api/metrics', async (req, res) => {
 app.use('/api/questions', apiLimiter, questionsRouter);
 app.use('/api/users', apiLimiter, userRouter);
 app.use('/api/login', authLimiter, loginRouter);
+// Not authLimiter: a refresh/logout call already requires possessing a
+// validly-signed refresh token (not a guessable password), so it doesn't
+// need login's strict brute-force throttling — apiLimiter's general
+// traffic allowance is the right fit.
+app.use('/api/auth', apiLimiter, authRouter);
 app.use('/api/leetcode', leetcodeLimiter, leetcodeRouter);
 app.use('/api/admin', apiLimiter, adminRouter);
 

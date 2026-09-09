@@ -11,7 +11,8 @@ import {
   Cell,
 } from 'recharts';
 import axios from 'axios';
-import { getUserStats, getReviewsDue, logSolve } from '../api/client';
+import { useNavigate } from 'react-router-dom';
+import { getUserStats, getReviewsDue, logSolve, logout } from '../api/client';
 import type { UserStats, ReviewDue } from '../api/client';
 import Streaks from '../components/streaks';
 
@@ -153,10 +154,16 @@ function LogSolveForm() {
 
 function Dashboard() {
   const userId = localStorage.getItem('userId');
+  const navigate = useNavigate();
   const [stats, setStats] = useState<UserStats | null>(null);
   const [reviewsDue, setReviewsDue] = useState<ReviewDue[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+
+  const handleLogout = async () => {
+    await logout();
+    navigate('/login');
+  };
 
   // Streaks isn't computed anywhere in the backend's stats response yet, so
   // this stays wired to the same placeholder value the component already
@@ -215,6 +222,9 @@ function Dashboard() {
           Dashboard
         </h1>
         <span className="badge">{stats.totalSolved} solved</span>
+        <button type="button" className="btn-secondary" onClick={handleLogout}>
+          Log out
+        </button>
       </div>
 
       <LogSolveForm />

@@ -20,7 +20,12 @@ const userExtractor = async (req, res, next) => {
   }
 
   const decodedToken = jwt.verify(req.token, process.env.JWT_SECRET);
-  if (!decodedToken.id) {
+  // Refresh tokens are signed with this same secret (see utils/tokens.js),
+  // so without this check a leaked refresh token could be replayed here
+  // directly as a Bearer access token for its full 7-day life instead of
+  // the access token's 15 minutes — the `type` claim is what actually
+  // keeps the two from being interchangeable.
+  if (!decodedToken.id || decodedToken.type !== 'access') {
     return res.status(401).json({ error: 'token invalid' });
   }
 

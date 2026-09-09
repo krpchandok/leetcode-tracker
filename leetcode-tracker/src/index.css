@@ -140,6 +140,17 @@ button:disabled {
   transform: none;
 }
 
+.btn-secondary {
+  background: transparent;
+  border: 1px solid var(--card-border);
+  color: var(--text-muted);
+}
+
+.btn-secondary:hover {
+  background: var(--card-border);
+  color: var(--text-heading);
+}
+
 input,
 select,
 textarea {
