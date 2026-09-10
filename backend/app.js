@@ -36,6 +36,15 @@ const CORS_ORIGINS = (process.env.CORS_ORIGIN || 'http://localhost:5173')
 
 const app = express();
 
+// Render (and most PaaS hosts) put this app behind a reverse proxy, which
+// sets X-Forwarded-For to the real client IP. Without trusting it, Express
+// sees every request as coming from the proxy's own address — express-rate-
+// limit then can't tell users apart by IP (ERR_ERL_UNEXPECTED_X_FORWARDED_FOR)
+// and would otherwise rate-limit the whole app as if it were one client.
+// `1` trusts exactly one hop (Render's own edge proxy), not an
+// attacker-controlled arbitrary chain.
+app.set('trust proxy', 1);
+
 app.use(cors({ origin: CORS_ORIGINS }));
 app.use(express.json());
 app.use(traceIdMiddleware);

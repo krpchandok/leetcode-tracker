@@ -23,6 +23,10 @@ on:
     # against MongoDB Atlas — a scheduled batch job, not an always-on
     # service, so the live dashboard never waits on Spark.
     - cron: '0 4 * * *'
+    # Every 10 minutes: retry any Kafka messages that failed to produce
+    # (backend/cron/retryFailedKafkaMessages.js) — e.g. a managed-Kafka
+    # outage or topic misconfiguration that's since been fixed.
+    - cron: '*/10 * * * *'
   workflow_dispatch: {}
 
 jobs:
@@ -33,6 +37,15 @@ jobs:
       - name: Call /api/admin/poll-leetcode-submissions
         run: |
           curl -sf -X POST "${{ secrets.BACKEND_URL }}/api/admin/poll-leetcode-submissions" \
+            -H "X-Admin-Token: ${{ secrets.ADMIN_TASK_TOKEN }}"
+
+  retry-failed-kafka-messages:
+    if: github.event.schedule == '*/10 * * * *' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Call /api/admin/retry-failed-kafka-messages
+        run: |
+          curl -sf -X POST "${{ secrets.BACKEND_URL }}/api/admin/retry-failed-kafka-messages" \
             -H "X-Admin-Token: ${{ secrets.ADMIN_TASK_TOKEN }}"
 
   warm-stats-cache:

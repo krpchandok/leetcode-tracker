@@ -9,7 +9,8 @@ const cron = require('node-cron');
 const User = require('../models/users.js');
 const Question = require('../models/question.js');
 const { queryLeetCode } = require('../leetcode/client.js');
-const { getProducer, TOPIC_SUBMISSIONS_RAW } = require('../kafka/client.js');
+const { TOPIC_LEETCODE_EVENTS } = require('../kafka/client.js');
+const { produceWithFallback } = require('../kafka/produceWithFallback.js');
 const { info, error } = require('../utils/logger.js');
 
 const POLL_LIMIT = 20;
@@ -20,7 +21,6 @@ const pollLeetCodeSubmissions = async () => {
   );
   info(`pollLeetCodeSubmissions: checking ${users.length} user(s) with a linked LeetCode username`);
 
-  const producer = await getProducer();
   let totalPublished = 0;
 
   for (const user of users) {
@@ -50,10 +50,11 @@ const pollLeetCodeSubmissions = async () => {
         continue;
       }
 
-      await producer.send({
-        topic: TOPIC_SUBMISSIONS_RAW,
-        messages: newSubmissions.map((submission) => ({
+      const { delivered } = await produceWithFallback(
+        TOPIC_LEETCODE_EVENTS,
+        newSubmissions.map((submission) => ({
           value: JSON.stringify({
+            stage: 'raw',
             userId: user._id.toString(),
             titleSlug: submission.titleSlug,
             title: submission.title,
@@ -61,12 +62,12 @@ const pollLeetCodeSubmissions = async () => {
             timestamp: submission.timestamp,
             lang: submission.lang,
           }),
-        })),
-      });
+        }))
+      );
 
       totalPublished += newSubmissions.length;
       info(
-        `pollLeetCodeSubmissions: published ${newSubmissions.length} new submission(s) for ${user.leetcodeUsername}`
+        `pollLeetCodeSubmissions: ${delivered ? 'published' : 'queued for retry'} ${newSubmissions.length} new submission(s) for ${user.leetcodeUsername}`
       );
     } catch (err) {
       error(`pollLeetCodeSubmissions: failed for ${user.leetcodeUsername}:`, err.message);

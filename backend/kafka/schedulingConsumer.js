@@ -1,7 +1,7 @@
 const mongoose = require('mongoose');
 const { MONGODB_URI } = require('../utils/config.js');
 const { info, error, logger } = require('../utils/logger.js');
-const { kafka, TOPIC_SUBMISSION_PROCESSED } = require('./client.js');
+const { kafka, TOPIC_LEETCODE_EVENTS } = require('./client.js');
 const Question = require('../models/question.js');
 const Review = require('../models/review.js');
 const { calculateNextReview } = require('../scheduling/sm2.js');
@@ -75,13 +75,19 @@ const startSchedulingConsumer = async () => {
   // revisit if that turns out to matter in practice.
   const consumer = kafka.consumer({ groupId: 'scheduling-service' });
   await consumer.connect();
-  await consumer.subscribe({ topic: TOPIC_SUBMISSION_PROCESSED, fromBeginning: false });
+  await consumer.subscribe({ topic: TOPIC_LEETCODE_EVENTS, fromBeginning: false });
 
-  info(`schedulingConsumer subscribed to ${TOPIC_SUBMISSION_PROCESSED}, waiting for messages...`);
+  info(`schedulingConsumer subscribed to ${TOPIC_LEETCODE_EVENTS}, waiting for messages...`);
 
   await consumer.run({
     eachMessage: async ({ message }) => {
       const event = JSON.parse(message.value.toString());
+      // This consumer group sees every message on the shared topic (see
+      // kafka/client.js's TOPIC_LEETCODE_EVENTS comment) — 'raw'-stage ones
+      // are syncConsumer's, not this one's.
+      if (event.stage !== 'processed') {
+        return;
+      }
       await processEvent(event);
     },
   });

@@ -1,12 +1,8 @@
 const mongoose = require('mongoose');
 const { MONGODB_URI } = require('../utils/config.js');
 const { info, error, logger } = require('../utils/logger.js');
-const {
-  kafka,
-  getProducer,
-  TOPIC_SUBMISSIONS_RAW,
-  TOPIC_SUBMISSION_PROCESSED,
-} = require('./client.js');
+const { kafka, TOPIC_LEETCODE_EVENTS } = require('./client.js');
+const { produceWithFallback } = require('./produceWithFallback.js');
 const User = require('../models/users.js');
 const Question = require('../models/question.js');
 const { invalidate } = require('../redis/client.js');
@@ -25,7 +21,7 @@ const statusFor = (statusDisplay) => {
   return 'unsolved';
 };
 
-const processSubmission = async (submission, producer) => {
+const processSubmission = async (submission) => {
   const { userId, titleSlug, title, statusDisplay, traceId, difficulty, tags, timeTakenMinutes, notes } =
     submission;
   const log = logger.child({ traceId });
@@ -81,14 +77,17 @@ const processSubmission = async (submission, producer) => {
     // who just solved something doesn't see stale dashboard numbers.
     await invalidate(`stats:user:${userId}`);
 
-    await producer.send({
-      topic: TOPIC_SUBMISSION_PROCESSED,
-      messages: [
-        {
-          value: JSON.stringify({ userId, titleSlug, questionId: question._id.toString(), traceId }),
-        },
-      ],
-    });
+    await produceWithFallback(TOPIC_LEETCODE_EVENTS, [
+      {
+        value: JSON.stringify({
+          stage: 'processed',
+          userId,
+          titleSlug,
+          questionId: question._id.toString(),
+          traceId,
+        }),
+      },
+    ]);
 
     kafkaMessagesProcessedTotal.inc({ consumer: 'sync-service', outcome: 'success' });
   } catch (err) {
@@ -106,18 +105,22 @@ const processSubmission = async (submission, producer) => {
 // /api/metrics — starting a second Mongo connection or metrics server here
 // would just be redundant in that mode.
 const startSyncConsumer = async () => {
-  const producer = await getProducer();
-
   const consumer = kafka.consumer({ groupId: 'sync-service' });
   await consumer.connect();
-  await consumer.subscribe({ topic: TOPIC_SUBMISSIONS_RAW, fromBeginning: false });
+  await consumer.subscribe({ topic: TOPIC_LEETCODE_EVENTS, fromBeginning: false });
 
-  info(`syncConsumer subscribed to ${TOPIC_SUBMISSIONS_RAW}, waiting for messages...`);
+  info(`syncConsumer subscribed to ${TOPIC_LEETCODE_EVENTS}, waiting for messages...`);
 
   await consumer.run({
     eachMessage: async ({ message }) => {
       const submission = JSON.parse(message.value.toString());
-      await processSubmission(submission, producer);
+      // This consumer group sees every message on the shared topic (see
+      // kafka/client.js's TOPIC_LEETCODE_EVENTS comment) — 'processed'-stage
+      // ones are schedulingConsumer's, not this one's.
+      if (submission.stage !== 'raw') {
+        return;
+      }
+      await processSubmission(submission);
     },
   });
 

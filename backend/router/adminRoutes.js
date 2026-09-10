@@ -1,6 +1,7 @@
 const router = require('express').Router();
 const { warmStatsCache } = require('../cron/warmStatsCache.js');
 const { pollLeetCodeSubmissions } = require('../cron/pollLeetCodeSubmissions.js');
+const { retryFailedKafkaMessages } = require('../cron/retryFailedKafkaMessages.js');
 const { error } = require('../utils/logger.js');
 
 // These endpoints exist so an external scheduler (a GitHub Actions cron
@@ -40,6 +41,16 @@ router.post('/poll-leetcode-submissions', requireAdminToken, async (req, res) =>
   } catch (err) {
     error('admin poll-leetcode-submissions failed:', err);
     res.status(500).json({ error: 'poll-leetcode-submissions failed' });
+  }
+});
+
+router.post('/retry-failed-kafka-messages', requireAdminToken, async (req, res) => {
+  try {
+    const result = await retryFailedKafkaMessages();
+    res.json({ ok: true, ...result });
+  } catch (err) {
+    error('admin retry-failed-kafka-messages failed:', err);
+    res.status(500).json({ error: 'retry-failed-kafka-messages failed' });
   }
 });
 
