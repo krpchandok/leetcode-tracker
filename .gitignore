@@ -38,3 +38,6 @@ Thumbs.db
 
 # Misc
 *.local
+
+# Claude Code local session state
+.claude/
