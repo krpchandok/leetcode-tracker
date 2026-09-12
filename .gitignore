@@ -8,6 +8,7 @@ __pycache__/
 .env
 .env.*
 !.env.example
+k8s/secret.yaml
 
 # Build output
 dist/

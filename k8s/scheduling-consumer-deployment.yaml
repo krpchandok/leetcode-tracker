@@ -1,0 +1,52 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: scheduling-consumer
+  labels:
+    app: scheduling-consumer
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: scheduling-consumer
+  template:
+    metadata:
+      labels:
+        app: scheduling-consumer
+    spec:
+      initContainers:
+        - name: wait-for-dependencies
+          image: busybox:1.36
+          command:
+            - sh
+            - -c
+            - until nc -z kafka 29092; do sleep 2; done; until nc -z redis 6379; do sleep 2; done
+      containers:
+        - name: scheduling-consumer
+          image: leetcode-tracker-api:latest
+          imagePullPolicy: IfNotPresent
+          command: ["npm", "run", "consumer:scheduling"]
+          ports:
+            - containerPort: 9102
+          envFrom:
+            - secretRef:
+                name: backend-secrets
+            - configMapRef:
+                name: backend-config
+          env:
+            - name: KAFKA_USERNAME
+              value: ""
+            - name: KAFKA_PASSWORD
+              value: ""
+          readinessProbe:
+            httpGet:
+              path: /metrics
+              port: 9102
+            initialDelaySeconds: 10
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /metrics
+              port: 9102
+            initialDelaySeconds: 20
+            periodSeconds: 20

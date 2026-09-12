@@ -1,0 +1,15 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: backend-config
+data:
+  NODE_ENV: "production"
+  PORT: "3001"
+  LOG_LEVEL: "info"
+  CORS_ORIGIN: "http://leetcode.local"
+  KAFKA_BROKER: "kafka:29092"
+  KAFKA_TOPIC: "leetcode-solve-events"
+  REDIS_URL: "redis://redis:6379"
+  SYNC_METRICS_PORT: "9101"
+  SCHEDULING_METRICS_PORT: "9102"
+  ENABLE_INPROCESS_CONSUMERS: "false"
